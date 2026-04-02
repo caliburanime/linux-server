@@ -99,6 +99,23 @@ app.use(cors(corsOptions));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// API Key validation middleware (for POST/DELETE requests only)
+app.use((req, res, next) => {
+  // Skip API key check for GET and health endpoint
+  if (req.method === 'GET' || req.path === '/health') {
+    return next();
+  }
+
+  const apiKey = req.headers['x-api-key'] || '';
+  if (!apiKey || apiKey !== process.env.API_KEY) {
+    return res.status(401).json({
+      error: 'Unauthorized',
+      message: 'Missing or invalid API key',
+    });
+  }
+  next();
+});
+
 // Logging
 const accessLogStream = fs.createWriteStream(path.join(LOG_DIR, 'access.log'), {
   flags: 'a',

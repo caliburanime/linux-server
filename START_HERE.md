@@ -66,9 +66,10 @@ Follow [MANUAL_CHECKLIST.md](./MANUAL_CHECKLIST.md) line by line. Good for learn
 | ----------------- | -------------------------- | ------------------------- |
 | **Node.js + npm** | JavaScript runtime         | `pacman -S nodejs npm`    |
 | **Nginx**         | Web server + reverse proxy | `pacman -S nginx`         |
-| **PostgreSQL**    | Database                   | `pacman -S postgresql`    |
 | **PM2**           | Process manager            | `npm install -g pm2`      |
 | **Express.js**    | File upload API            | `/opt/misapp-file-server` |
+
+**Database:** PostgreSQL is hosted on Supabase (not on this server)
 
 ---
 
@@ -130,7 +131,7 @@ ALLOWED_ORIGINS=https://your-app.vercel.app,https://files.your-domain.com
 The `setup.sh` script automatically:
 
 1. ✅ Updates Arch Linux packages
-2. ✅ Installs Node.js, npm, Nginx, PostgreSQL
+2. ✅ Installs Node.js, npm, Nginx
 3. ✅ Creates directories (`/var/www/misapp/uploads/`, `/var/log/misapp`)
 4. ✅ Sets correct permissions (nginx user)
 5. ✅ Installs Node dependencies (`npm install`)
@@ -195,7 +196,7 @@ Dashboard → Settings → Environment Variables
 
 ```
 NEXT_PUBLIC_FILES_URL=https://files.your-domain.com
-DATABASE_URL=postgresql://misapp:password@your-server-ip:5432/misapp
+DATABASE_URL=postgresql://...  # Your Supabase connection string (from supabase.com)
 ```
 
 ### **Step 2: Update Your Next.js Upload API**
@@ -257,7 +258,7 @@ sudo bash linux-server/scripts/restart.sh
 
 ```bash
 sudo pm2 list
-sudo systemctl status nginx postgresql
+sudo systemctl status nginx
 ```
 
 ### **Upload file manually**
@@ -290,15 +291,9 @@ sudo systemctl reload nginx
 
 3. **DNS setup:** Point `files.your-domain.com` to your server IP
 
-4. **PostgreSQL:** Make sure `DATABASE_URL` is correct in Vercel
+4. **Database:** Use Supabase for PostgreSQL (not this server)
 
-5. **Backups:** Regularly back up PostgreSQL database
-
-    ```bash
-    pg_dump -U misapp misapp > backup-$(date +%Y%m%d).sql
-    ```
-
-6. **Monitoring:** Check disk space periodically
+5. **Monitoring:** Check disk space periodically
     ```bash
     du -sh /var/www/misapp/uploads/
     ```
@@ -325,11 +320,6 @@ sudo systemctl reload nginx
 
 - Check directory: `ls -la /var/www/misapp/uploads/`
 - Check Nginx: `sudo nginx -t && sudo systemctl reload nginx`
-
-### Can't connect to PostgreSQL
-
-- Check if running: `sudo systemctl status postgresql`
-- Test connection: `psql -h localhost -U misapp -d misapp -c "SELECT 1;"`
 
 More troubleshooting in **SETUP_GUIDE.md** → Troubleshooting section
 

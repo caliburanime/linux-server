@@ -55,42 +55,6 @@ sudo systemctl status nginx
 - [ ] Nginx enabled for auto-start
 - [ ] Nginx is running
 
-### 1.4 Verify PostgreSQL
-
-```bash
-sudo pacman -S postgresql
-sudo systemctl enable postgresql
-sudo systemctl start postgresql
-```
-
-- [ ] PostgreSQL installed
-- [ ] PostgreSQL is running
-
-### 1.5 Create PostgreSQL user & database
-
-```bash
-sudo -u postgres psql
-```
-
-Then in psql prompt:
-
-```sql
-CREATE USER misapp WITH PASSWORD 'strong-password-here';
-CREATE DATABASE misapp OWNER misapp;
-GRANT ALL PRIVILEGES ON DATABASE misapp TO misapp;
-\q
-```
-
-Test connection:
-
-```bash
-psql -h localhost -U misapp -d misapp -c "SELECT version();"
-```
-
-- [ ] PostgreSQL user created: `misapp`
-- [ ] Database created: `misapp`
-- [ ] Connection tested
-
 ---
 
 ## **Phase 2: Create Directories**
@@ -428,11 +392,11 @@ Add or update:
 
 ```
 NEXT_PUBLIC_FILES_URL=https://files.your-domain.com
-DATABASE_URL=postgresql://misapp:password@your-server-ip:5432/misapp
+DATABASE_URL=postgresql://...  # Your Supabase connection string (from supabase.com)
 ```
 
 - [ ] NEXT_PUBLIC_FILES_URL set
-- [ ] DATABASE_URL set
+- [ ] DATABASE_URL set (from Supabase)
 - [ ] Vercel redeployed
 
 ---
@@ -442,7 +406,6 @@ DATABASE_URL=postgresql://misapp:password@your-server-ip:5432/misapp
 ```bash
 # Check all services
 sudo systemctl status nginx
-sudo systemctl status postgresql
 sudo pm2 list
 
 # Check disk usage
@@ -453,7 +416,7 @@ du -sh /var/www/misapp/uploads
 curl https://files.your-domain.com/health
 ```
 
-- [ ] All services running
+- [ ] All services running (Nginx + Node.js)
 - [ ] Health check passes
 - [ ] Disk space sufficient
 
@@ -465,8 +428,7 @@ Your file server is now running. Next:
 
 1. Test uploading from Vercel
 2. Set up monitoring (optional)
-3. Back up your PostgreSQL database regularly
-4. Monitor disk space in `/var/www/misapp/uploads`
+3. Monitor disk space in `/var/www/misapp/uploads`
 
 ---
 
@@ -482,7 +444,7 @@ sudo systemctl reload nginx
 
 # Check status
 sudo pm2 list
-sudo systemctl status nginx postgresql
+sudo systemctl status nginx
 
 # Test upload
 curl -X POST -F "file=@test.txt" https://files.your-domain.com/api/upload

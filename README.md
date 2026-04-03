@@ -1,6 +1,8 @@
-# Linux Server Setup — Node.js + Nginx + PostgreSQL
+# Linux Server Setup — Node.js + Nginx File Server
 
 Complete guide for deploying the MIS Department Portal file server on Arch Linux.
+
+**Database:** Supabase (managed PostgreSQL, not self-hosted)
 
 ---
 
@@ -31,7 +33,7 @@ That's it! The file server will be running on port 3001, proxied through Nginx.
 
 The full guide covers:
 
-- Phase 1: Install dependencies (Node.js, Nginx, PostgreSQL on Arch Linux)
+- Phase 1: Install dependencies (Node.js, Nginx on Arch Linux)
 - Phase 2: Create directories & Nginx config
 - Phase 3: Node.js file server
 - Phase 4: PM2 process manager
@@ -72,7 +74,6 @@ linux-server/
 | ----------------- | --------------------------------------- | --------------- |
 | **Node.js + npm** | JavaScript runtime                      | —               |
 | **Nginx**         | Web server + reverse proxy              | 80, 443         |
-| **PostgreSQL**    | Database                                | 5432            |
 | **PM2**           | Process manager (keeps Node.js running) | —               |
 | **Express.js**    | File upload API                         | 3001 (internal) |
 
@@ -117,7 +118,6 @@ linux-server/
 ```bash
 sudo pm2 list              # File server status
 sudo systemctl status nginx # Nginx status
-sudo systemctl status postgresql  # Database status
 ```
 
 ### View logs
@@ -190,7 +190,7 @@ Update your Vercel environment variables:
 
 ```env
 NEXT_PUBLIC_FILES_URL=https://files.your-domain.com
-DATABASE_URL=postgresql://misapp:password@your-server-ip:5432/misapp
+DATABASE_URL=postgresql://...  # Your Supabase connection string (from supabase.com)
 ```
 
 Then in your Next.js upload API:
@@ -261,16 +261,6 @@ sudo nginx -t
 # View errors
 sudo systemctl status nginx
 sudo journalctl -u nginx -n 20
-```
-
-### PostgreSQL won't connect
-
-```bash
-# Check if it's running
-sudo systemctl status postgresql
-
-# Check password is correct
-psql -h localhost -U misapp -d misapp -c "SELECT 1;"
 ```
 
 ---

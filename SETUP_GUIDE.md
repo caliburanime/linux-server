@@ -1,8 +1,10 @@
 # Linux Server Setup Guide — MIS Department Portal
 
-Complete step-by-step guide for Arch Linux with Node.js + Nginx + PostgreSQL file server.
+Complete step-by-step guide for Arch Linux with Node.js + Nginx file server.
 
 **Project Location:** `/home/scorpio/calibur/mis-dept-website`
+
+**Database:** Supabase (managed PostgreSQL, not self-hosted)
 
 ---
 
@@ -51,31 +53,6 @@ npm --version
 sudo pacman -S nginx
 sudo systemctl enable nginx
 sudo systemctl start nginx
-```
-
-### Step 1.4: Verify PostgreSQL is running
-
-```bash
-sudo pacman -S postgresql
-sudo systemctl status postgresql
-
-# If not running:
-sudo systemctl start postgresql
-sudo systemctl enable postgresql
-```
-
-### Step 1.5: Create PostgreSQL user and database (if not done)
-
-```bash
-sudo -u postgres psql <<EOF
-CREATE USER misapp WITH PASSWORD 'strong-password-here';
-CREATE DATABASE misapp OWNER misapp;
-GRANT ALL PRIVILEGES ON DATABASE misapp TO misapp;
-\q
-EOF
-
-# Test connection
-psql -h localhost -U misapp -d misapp -c "SELECT version();"
 ```
 
 ---
@@ -302,9 +279,6 @@ sudo systemctl status nginx
 
 # Check Node.js via PM2
 sudo pm2 list
-
-# Check PostgreSQL
-sudo systemctl status postgresql
 ```
 
 ---
@@ -315,7 +289,7 @@ In Vercel dashboard, add:
 
 ```env
 NEXT_PUBLIC_FILES_URL=https://files.your-domain.com
-DATABASE_URL=postgresql://misapp:password@your-server-ip:5432/misapp
+DATABASE_URL=postgresql://...  # Your Supabase connection string (from supabase.com)
 ```
 
 ---
@@ -396,19 +370,6 @@ ls -la /var/www/misapp/uploads/
 # Fix if needed
 sudo chown http:http /var/www/misapp/uploads
 sudo chmod 755 /var/www/misapp/uploads
-```
-
-### PostgreSQL connection refused
-
-```bash
-# Check if PostgreSQL is running
-sudo systemctl status postgresql
-
-# Verify user/password
-psql -h localhost -U misapp -d misapp -c "SELECT 1;"
-
-# Check listen_address in postgresql.conf
-sudo grep "listen_addresses" /var/lib/postgres/data/postgresql.conf
 ```
 
 ---

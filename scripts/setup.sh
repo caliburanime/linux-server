@@ -32,29 +32,20 @@ pacman -S --noconfirm nginx
 systemctl enable nginx
 systemctl start nginx
 
-# Step 4: Verify PostgreSQL
-echo "📦 Step 4: Checking PostgreSQL..."
-if ! systemctl is-active --quiet postgresql; then
-  echo "   Installing PostgreSQL..."
-  pacman -S --noconfirm postgresql
-  systemctl enable postgresql
-  systemctl start postgresql
-fi
-
-# Step 5: Create directories
-echo "📁 Step 5: Creating upload directories..."
+# Step 4: Create directories
+echo "📁 Step 4: Creating upload directories..."
 mkdir -p /var/www/misapp/uploads/{questions,resources,notes,profiles}
 chown -R http:http /var/www/misapp
 chmod -R 755 /var/www/misapp
 
-# Step 6: Create log directory
-echo "📁 Step 6: Creating log directory..."
+# Step 5: Create log directory
+echo "📁 Step 5: Creating log directory..."
 mkdir -p /var/log/misapp
 chown http:http /var/log/misapp
 chmod 755 /var/log/misapp
 
-# Step 7: Set up file server
-echo "📁 Step 7: Setting up file server..."
+# Step 6: Set up file server
+echo "📁 Step 6: Setting up file server..."
 if [ -d "/opt/misapp-file-server" ]; then
   echo "   Directory exists, skipping creation"
 else
@@ -73,12 +64,12 @@ fi
 
 cd /opt/misapp-file-server
 
-# Step 8: Install Node dependencies
-echo "📦 Step 8: Installing Node.js dependencies..."
+# Step 7: Install Node dependencies
+echo "📦 Step 7: Installing Node.js dependencies..."
 npm install
 
-# Step 9: Create .env file if it doesn't exist
-echo "⚙️  Step 9: Creating .env file..."
+# Step 8: Create .env file if it doesn't exist
+echo "⚙️  Step 8: Creating .env file..."
 if [ ! -f ".env" ]; then
   cat > .env <<EOF
 NODE_ENV=production
@@ -93,18 +84,18 @@ else
   echo "   .env already exists, skipping"
 fi
 
-# Step 10: Install PM2
-echo "📦 Step 10: Installing PM2..."
+# Step 9: Install PM2
+echo "📦 Step 9: Installing PM2..."
 npm install -g pm2
 
-# Step 11: Start with PM2
-echo "🚀 Step 11: Starting file server with PM2..."
+# Step 10: Start with PM2
+echo "🚀 Step 10: Starting file server with PM2..."
 pm2 start index.js --name "misapp-files" --user http
 pm2 startup --user http
 pm2 save
 
-# Step 12: Copy Nginx config if provided
-echo "⚙️  Step 12: Configuring Nginx..."
+# Step 11: Copy Nginx config if provided
+echo "⚙️  Step 11: Configuring Nginx..."
 if [ -f "/home/scorpio/calibur/mis-dept-website/linux-server/nginx/misapp-files.conf" ]; then
   cp /home/scorpio/calibur/mis-dept-website/linux-server/nginx/misapp-files.conf /etc/nginx/sites-available/
   ln -sf /etc/nginx/sites-available/misapp-files.conf /etc/nginx/sites-enabled/

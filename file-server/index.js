@@ -38,7 +38,21 @@ if (!fs.existsSync(LOG_DIR)) {
 // Multer storage configuration
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, UPLOAD_DIR);
+    let targetDir = UPLOAD_DIR;
+    
+    // Support optional folder parameter (must be appended BEFORE the file in formData)
+    if (req.body.folder) {
+      // Basic sanitization to prevent escaping UPLOAD_DIR
+      const safeFolder = req.body.folder.replace(/\.\./g, '').replace(/^\/+|\/+$/g, '');
+      if (safeFolder) {
+        targetDir = path.join(UPLOAD_DIR, safeFolder);
+        if (!fs.existsSync(targetDir)) {
+          fs.mkdirSync(targetDir, { recursive: true });
+        }
+      }
+    }
+    
+    cb(null, targetDir);
   },
   filename: (req, file, cb) => {
     const timestamp = Date.now();
@@ -142,7 +156,8 @@ app.post('/api/upload', upload.single('file'), (req, res) => {
       });
     }
 
-    const fileUrl = `/uploads/${req.file.filename}`;
+    const folderParam = req.body.folder ? `${req.body.folder.replace(/\.\./g, '').replace(/^\/+|\/+$/g, '')}/` : '';
+    const fileUrl = `/uploads/${folderParam}${req.file.filename}`;
 
     console.log(`✓ File uploaded: ${req.file.originalname} → ${req.file.filename}`);
 

@@ -2,6 +2,8 @@
 
 Visual guide to understand how everything connects.
 
+**Note:** PostgreSQL database is hosted on Supabase (managed service), not on this Linux server. This server only handles file storage and uploads.
+
 ---
 
 ## **System Architecture**
@@ -43,13 +45,12 @@ Visual guide to understand how everything connects.
     │      ↓ Saves to                │
     │   /var/www/misapp/uploads/    │
     └───────────────────────────────┘
-                 │
-┌────────────────▼──────────────────────────────────┐
-│   PostgreSQL (Port 5432)                         │
-│   Database: misapp                               │
-│   User: misapp                                   │
-│   (Stores file URLs, metadata, user data)       │
-└───────────────────────────────────────────────────┘
+
+
+DATABASE: Supabase (Managed PostgreSQL)
+   - Hosted remotely (not on this server)
+   - Stores file URLs, metadata, user data
+   - Connected via Vercel app, not this server
 
 
 USER FLOW:
@@ -131,9 +132,6 @@ USER FLOW:
 │  └─ live/files.your-domain.com/
 │     ├─ fullchain.pem
 │     └─ privkey.pem
-│
-└─ /var/lib/postgresql/           [PostgreSQL data]
-   └─ data/
 ```
 
 ---
@@ -168,7 +166,7 @@ Node.js receives:
         ↓
 
 Client receives response:
-  ✓ Stores fileUrl in PostgreSQL
+  ✓ Stores fileUrl in Supabase (for later retrieval)
   ✓ User can now download via /uploads/
 ```
 
@@ -289,7 +287,7 @@ mis-dept-website/                → Cloned/copied from your laptop
                                  }
 
 Next.js receives fileUrl
-└─ Saves to PostgreSQL (on Linux server)
+└─ Saves to Supabase (managed PostgreSQL)
    └─ {courseId, fileUrl, fileType, ...}
 
 Later, when user clicks download:
@@ -303,17 +301,16 @@ Later, when user clicks download:
 ## **Service Startup Order**
 
 ```
-1. PostgreSQL starts on boot
-   └─ Database ready for connections
-
-2. Nginx starts on boot
+1. Nginx starts on boot
    └─ Listening on :80 and :443
 
-3. PM2 starts file server (via systemctl)
+2. PM2 starts file server (via systemctl)
    └─ Node.js :3001 ready to receive uploads
 
-4. All services running ✓
+3. Both services running ✓
    └─ Ready for requests from Vercel
+
+Note: Database is Supabase (managed service, starts independently)
 ```
 
 ---
@@ -331,8 +328,6 @@ Later, when user clicks download:
 │  File Size Limit (10 MB)             │  ← Prevents attacks
 ├──────────────────────────────────────┤
 │  Filename Sanitization               │  ← Prevents path traversal
-├──────────────────────────────────────┤
-│  PostgreSQL User Auth                │  ← Database access control
 ├──────────────────────────────────────┤
 │  Nginx Access/Error Logs             │  ← Tracks all requests
 └──────────────────────────────────────┘
@@ -357,10 +352,6 @@ File not found         → ls -la /var/www/misapp/uploads/
 Can't connect Vercel   → Check DNS: nslookup files.your-domain.com
                        → Check firewall: sudo ufw allow 443
                        → Check ALLOWED_ORIGINS in .env
-
-PostgreSQL issues      → psql -h localhost -U misapp -d misapp
-                       → sudo systemctl status postgresql
-                       → sudo journalctl -u postgresql -n 20
 ```
 
 ---

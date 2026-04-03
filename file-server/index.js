@@ -55,14 +55,12 @@ const storage = multer.diskStorage({
     cb(null, targetDir);
   },
   filename: (req, file, cb) => {
-    const timestamp = Date.now();
     // Sanitize filename: remove special characters, keep only alphanumeric, dots, and hyphens
     const sanitized = file.originalname
       .replace(/[^a-zA-Z0-9.-]/g, '-')
       .replace(/-+/g, '-')
       .toLowerCase();
-    const filename = `${timestamp}-${sanitized}`;
-    cb(null, filename);
+    cb(null, sanitized);
   },
 });
 

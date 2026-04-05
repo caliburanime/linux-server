@@ -6,12 +6,21 @@
  * Proxied through Nginx
  */
 
+// eslint-disable-next-line @typescript-eslint/no-require-imports
 const express = require('express');
+// eslint-disable-next-line @typescript-eslint/no-require-imports
 const multer = require('multer');
+// eslint-disable-next-line @typescript-eslint/no-require-imports
 const cors = require('cors');
+// eslint-disable-next-line @typescript-eslint/no-require-imports
 const fs = require('fs');
+// eslint-disable-next-line @typescript-eslint/no-require-imports
 const path = require('path');
+// eslint-disable-next-line @typescript-eslint/no-require-imports
 const morgan = require('morgan');
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { pipeline } = require('stream/promises');
+// eslint-disable-next-line @typescript-eslint/no-require-imports
 require('dotenv').config();
 
 const app = express();
@@ -103,7 +112,7 @@ const corsOptions = {
   },
   credentials: true,
   methods: ['GET', 'POST', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-API-Key', 'X-File-Name', 'X-Upload-Folder', 'X-Source-Mime'],
 };
 
 // Middleware
@@ -142,6 +151,110 @@ app.get('/health', (req, res) => {
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
   });
+});
+
+// Raw streaming upload endpoint (no multipart parsing)
+app.post('/api/upload-stream', async (req, res) => {
+  try {
+    const rawName = req.headers['x-file-name'];
+    if (!rawName || typeof rawName !== 'string') {
+      return res.status(400).json({
+        error: 'Missing filename',
+        details: 'X-File-Name header is required',
+      });
+    }
+
+    const rawFolder = req.headers['x-upload-folder'];
+    const sourceMime = req.headers['x-source-mime'];
+    const contentLength = req.headers['content-length'];
+
+    const safeFolder = typeof rawFolder === 'string'
+      ? rawFolder.replace(/\.\./g, '').replace(/^\/+|\/+$/g, '')
+      : '';
+
+    let targetDir = UPLOAD_DIR;
+    if (safeFolder) {
+      targetDir = path.join(UPLOAD_DIR, safeFolder);
+      if (!fs.existsSync(targetDir)) {
+        fs.mkdirSync(targetDir, { recursive: true });
+      }
+    }
+
+    const sanitized = rawName
+      .replace(/[^a-zA-Z0-9.-]/g, '-')
+      .replace(/-+/g, '-')
+      .toLowerCase();
+
+    const maxBytes = 100 * 1024 * 1024;
+    if (typeof contentLength === 'string') {
+      const declaredSize = Number.parseInt(contentLength, 10);
+      if (Number.isFinite(declaredSize) && declaredSize > maxBytes) {
+        return res.status(413).json({
+          error: 'File too large',
+          details: 'Maximum file size is 100 MB',
+        });
+      }
+    }
+
+    const destinationPath = path.join(targetDir, sanitized);
+    if (!destinationPath.startsWith(UPLOAD_DIR)) {
+      return res.status(403).json({
+        error: 'Access denied',
+      });
+    }
+
+    let received = 0;
+    let tooLarge = false;
+
+    req.on('data', (chunk) => {
+      received += chunk.length;
+      if (received > maxBytes) {
+        tooLarge = true;
+        req.destroy(new Error('LIMIT_FILE_SIZE'));
+      }
+    });
+
+    const writeStream = fs.createWriteStream(destinationPath);
+    await pipeline(req, writeStream);
+
+    if (tooLarge) {
+      if (fs.existsSync(destinationPath)) {
+        fs.unlinkSync(destinationPath);
+      }
+      return res.status(413).json({
+        error: 'File too large',
+        details: 'Maximum file size is 100 MB',
+      });
+    }
+
+    const folderPrefix = safeFolder ? `${safeFolder}/` : '';
+    const fileUrl = `/uploads/${folderPrefix}${sanitized}`;
+
+    console.log(`✓ Stream uploaded: ${sanitized} (${received} bytes)`);
+
+    return res.json({
+      success: true,
+      fileUrl,
+      filename: sanitized,
+      originalName: rawName,
+      size: received,
+      mimeType: typeof sourceMime === 'string' ? sourceMime : 'application/octet-stream',
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    if (error && error.message === 'LIMIT_FILE_SIZE') {
+      return res.status(413).json({
+        error: 'File too large',
+        details: 'Maximum file size is 100 MB',
+      });
+    }
+
+    console.error(`✗ Stream upload error: ${error.message}`);
+    return res.status(500).json({
+      error: 'Upload failed',
+      details: error.message,
+    });
+  }
 });
 
 // Main upload endpoint

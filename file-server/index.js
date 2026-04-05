@@ -406,7 +406,7 @@ app.use((err, req, res, next) => {
 });
 
 // Start server
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`
 ╔════════════════════════════════════════╗
 ║  MIS File Upload Server                ║
@@ -426,6 +426,11 @@ app.listen(PORT, () => {
   Ready to receive uploads...
 `);
 });
+
+// Allow large uploads over slow links (e.g. 150-200 KB/s) to complete.
+server.requestTimeout = 20 * 60 * 1000;
+server.headersTimeout = 21 * 60 * 1000;
+server.keepAliveTimeout = 75 * 1000;
 
 // Graceful shutdown
 process.on('SIGTERM', () => {

@@ -17,6 +17,8 @@ const fs = require('fs');
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const path = require('path');
 // eslint-disable-next-line @typescript-eslint/no-require-imports
+const crypto = require('crypto');
+// eslint-disable-next-line @typescript-eslint/no-require-imports
 const morgan = require('morgan');
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { pipeline } = require('stream/promises');
@@ -112,7 +114,7 @@ const corsOptions = {
   },
   credentials: true,
   methods: ['GET', 'POST', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-API-Key', 'X-File-Name', 'X-Upload-Folder', 'X-Source-Mime'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-API-Key', 'X-Upload-Token', 'X-File-Name', 'X-Upload-Folder', 'X-Source-Mime'],
 };
 
 // Middleware
@@ -127,6 +129,11 @@ app.use((req, res, next) => {
     return next();
   }
 
+  // Direct browser uploads are authorized via short-lived upload tokens.
+  if (req.path === '/api/upload-stream-direct') {
+    return next();
+  }
+
   const apiKey = req.headers['x-api-key'] || '';
   if (!apiKey || apiKey !== process.env.API_KEY) {
     return res.status(401).json({
@@ -136,6 +143,52 @@ app.use((req, res, next) => {
   }
   next();
 });
+
+function base64UrlDecode(input) {
+  return Buffer.from(input, 'base64url').toString('utf8');
+}
+
+function verifyUploadToken(token, secret) {
+  if (!token || typeof token !== 'string') {
+    return { valid: false, reason: 'Missing token' };
+  }
+
+  const parts = token.split('.');
+  if (parts.length !== 2) {
+    return { valid: false, reason: 'Malformed token' };
+  }
+
+  const [payloadPart, signaturePart] = parts;
+  const expectedSignature = crypto
+    .createHmac('sha256', secret)
+    .update(payloadPart)
+    .digest('base64url');
+
+  const signatureBuffer = Buffer.from(signaturePart);
+  const expectedBuffer = Buffer.from(expectedSignature);
+  if (
+    signatureBuffer.length !== expectedBuffer.length ||
+    !crypto.timingSafeEqual(signatureBuffer, expectedBuffer)
+  ) {
+    return { valid: false, reason: 'Invalid signature' };
+  }
+
+  try {
+    const payload = JSON.parse(base64UrlDecode(payloadPart));
+    const now = Math.floor(Date.now() / 1000);
+    if (!payload.exp || payload.exp < now) {
+      return { valid: false, reason: 'Token expired' };
+    }
+
+    if (!payload.fileName || !payload.folder) {
+      return { valid: false, reason: 'Token missing upload scope' };
+    }
+
+    return { valid: true, payload };
+  } catch {
+    return { valid: false, reason: 'Invalid payload' };
+  }
+}
 
 // Logging
 const accessLogStream = fs.createWriteStream(path.join(LOG_DIR, 'access.log'), {
@@ -250,6 +303,130 @@ app.post('/api/upload-stream', async (req, res) => {
     }
 
     console.error(`✗ Stream upload error: ${error.message}`);
+    return res.status(500).json({
+      error: 'Upload failed',
+      details: error.message,
+    });
+  }
+});
+
+// Raw streaming upload endpoint with signed token auth (browser direct uploads)
+app.post('/api/upload-stream-direct', async (req, res) => {
+  try {
+    const rawToken = req.headers['x-upload-token'];
+    const verified = verifyUploadToken(rawToken, API_KEY);
+    if (!verified.valid) {
+      return res.status(401).json({
+        error: 'Unauthorized',
+        details: verified.reason,
+      });
+    }
+
+    const rawName = req.headers['x-file-name'];
+    if (!rawName || typeof rawName !== 'string') {
+      return res.status(400).json({
+        error: 'Missing filename',
+        details: 'X-File-Name header is required',
+      });
+    }
+
+    const rawFolder = req.headers['x-upload-folder'];
+    if (!rawFolder || typeof rawFolder !== 'string') {
+      return res.status(400).json({
+        error: 'Missing folder',
+        details: 'X-Upload-Folder header is required',
+      });
+    }
+
+    const tokenPayload = verified.payload;
+    if (rawName !== tokenPayload.fileName || rawFolder !== tokenPayload.folder) {
+      return res.status(403).json({
+        error: 'Upload scope mismatch',
+      });
+    }
+
+    const sourceMime = req.headers['x-source-mime'];
+    const contentLength = req.headers['content-length'];
+
+    const safeFolder = rawFolder.replace(/\.\./g, '').replace(/^\/+|\/+$/g, '');
+    let targetDir = UPLOAD_DIR;
+    if (safeFolder) {
+      targetDir = path.join(UPLOAD_DIR, safeFolder);
+      if (!fs.existsSync(targetDir)) {
+        fs.mkdirSync(targetDir, { recursive: true });
+      }
+    }
+
+    const sanitized = rawName
+      .replace(/[^a-zA-Z0-9.-]/g, '-')
+      .replace(/-+/g, '-')
+      .toLowerCase();
+
+    const maxBytes = 100 * 1024 * 1024;
+    if (typeof contentLength === 'string') {
+      const declaredSize = Number.parseInt(contentLength, 10);
+      if (Number.isFinite(declaredSize) && declaredSize > maxBytes) {
+        return res.status(413).json({
+          error: 'File too large',
+          details: 'Maximum file size is 100 MB',
+        });
+      }
+    }
+
+    const destinationPath = path.join(targetDir, sanitized);
+    if (!destinationPath.startsWith(UPLOAD_DIR)) {
+      return res.status(403).json({
+        error: 'Access denied',
+      });
+    }
+
+    let received = 0;
+    let tooLarge = false;
+
+    req.on('data', (chunk) => {
+      received += chunk.length;
+      if (received > maxBytes) {
+        tooLarge = true;
+        req.destroy(new Error('LIMIT_FILE_SIZE'));
+      }
+    });
+
+    const writeStream = fs.createWriteStream(destinationPath);
+    await pipeline(req, writeStream);
+
+    if (tooLarge) {
+      if (fs.existsSync(destinationPath)) {
+        fs.unlinkSync(destinationPath);
+      }
+      return res.status(413).json({
+        error: 'File too large',
+        details: 'Maximum file size is 100 MB',
+      });
+    }
+
+    const folderPrefix = safeFolder ? `${safeFolder}/` : '';
+    const fileUrl = `/uploads/${folderPrefix}${sanitized}`;
+
+    console.log(`✓ Direct stream uploaded: ${sanitized} (${received} bytes)`);
+
+    return res.json({
+      success: true,
+      fileUrl,
+      filename: sanitized,
+      originalName: rawName,
+      size: received,
+      mimeType: typeof sourceMime === 'string' ? sourceMime : 'application/octet-stream',
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    if (error && error.message === 'LIMIT_FILE_SIZE') {
+      return res.status(413).json({
+        error: 'File too large',
+        details: 'Maximum file size is 100 MB',
+      });
+    }
+
+    console.error(`✗ Direct stream upload error: ${error.message}`);
     return res.status(500).json({
       error: 'Upload failed',
       details: error.message,
